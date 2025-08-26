@@ -47,10 +47,13 @@ elif [[ "$GITOPS_BRANCH" == "homolog" ]]; then
     git commit -am "$6 has Built a new version: $RELEASE_VERSION"
     git push origin develop
 
-    printf "\033[0;32m============> Merge homolog in to release branch \033[0m\n"
-    git checkout release
-    git merge develop
-    git push origin release
+    printf "\033[0;32m============> Open PR: develop -> release \033[0m\n"
+    export GITHUB_TOKEN=$3
+    if gh pr create --head develop --base release -t "[Homolog] Automatic PR opened by $6 - $RELEASE_VERSION" --body "GitHub Actions: Automatic PR opened by $6 - $RELEASE_VERSION"; then
+        printf "\033[0;32mPR created successfully\033[0m\n"
+    else
+        printf "\033[0;33mPR already exists or an error occurred, skipping...\033[0m\n"
+    fi
 
 elif [[ "$GITOPS_BRANCH" == "release" ]]; then
     printf "\033[0;36m================================================================================================================> Condition 3: New release (HML and PRD environment) \033[0m\n"
@@ -86,7 +89,7 @@ elif [[ "$GITOPS_BRANCH" == "release" ]]; then
 
     printf "\033[0;32m============> Open PR: release -> master \033[0m\n"
     export GITHUB_TOKEN=$3
-    if gh pr create --head release --base master -t "GitHub Actions: Automatic PR opened by $6 - $RELEASE_VERSION" --body "GitHub Actions: Automatic PR opened by $6 - $RELEASE_VERSION"; then
+    if gh pr create --head release --base master -t "[Production] Automatic PR opened by $6 - $RELEASE_VERSION" --body "GitHub Actions: Automatic PR opened by $6 - $RELEASE_VERSION"; then
         printf "\033[0;32mPR created successfully\033[0m\n"
     else
         printf "\033[0;33mPR already exists or an error occurred, skipping...\033[0m\n"
