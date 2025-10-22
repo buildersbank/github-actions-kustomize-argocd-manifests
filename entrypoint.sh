@@ -28,34 +28,22 @@ if [[ "$ENVIRONMENT" == "develop" ]]; then
     git config --local user.name "GitHub Action"
     echo "Repo $1 cloned!!!"
 
-    printf "\033[0;32m============> Creating individual branch: $BRANCH_NAME \033[0m\n"
-    git checkout -b $BRANCH_NAME
-
     printf "\033[0;32m============> Develop branch Kustomize step - DEV Overlay \033[0m\n"
     cd k8s/$5/overlays/dev
 
     kustomize edit set image IMAGE=$4:$RELEASE_VERSION
     echo "Done!!"
 
-    printf "\033[0;32m============> Git commit and push individual branch \033[0m\n"
+    printf "\033[0;32m============> Git commit and push directly to develop \033[0m\n"
     cd ../../../..
     git add .
     git commit -m "Deploy $5 to DEV - version $RELEASE_VERSION by $6"
-    git push origin $BRANCH_NAME
+    git push origin develop
 
-    printf "\033[0;32m============> Open individual PR: $BRANCH_NAME -> develop \033[0m\n"
-    export GITHUB_TOKEN=$3
-    if gh pr create --head $BRANCH_NAME --base develop -t "[DEV] Deploy $5 - $RELEASE_VERSION" --body "**Microservice:** $5
-**Version:** $RELEASE_VERSION
-**Environment:** Development
-**Deployed by:** $6
-**Branch:** $BRANCH_NAME
-
-This PR updates only the $5 microservice to version $RELEASE_VERSION in the development environment."; then
-        printf "\033[0;32mIndividual PR created successfully\033[0m\n"
-    else
-        printf "\033[0;33mPR already exists or an error occurred, skipping...\033[0m\n"
-    fi
+    printf "\033[0;32m============> Merge develop into release branch \033[0m\n"
+    git checkout release
+    git merge develop
+    git push origin release
 
 elif [[ "$ENVIRONMENT" == "homolog" ]]; then
     printf "\033[0;36m================================================================================================================> Condition 2: Homolog environment \033[0m\n"
@@ -84,13 +72,12 @@ elif [[ "$ENVIRONMENT" == "homolog" ]]; then
 
     printf "\033[0;32m============> Open individual PR: $BRANCH_NAME -> release \033[0m\n"
     export GITHUB_TOKEN=$3
-    if gh pr create --head $BRANCH_NAME --base release -t "[HOMOLOG] Deploy $5 - $RELEASE_VERSION" --body "**Microservice:** $5
-**Version:** $RELEASE_VERSION
+    if gh pr create --head $BRANCH_NAME --base release -t "[HOMOLOG] Deploy $5" --body "**Microservice:** $5
 **Environment:** Homolog
 **Deployed by:** $6
 **Branch:** $BRANCH_NAME
 
-This PR updates only the $5 microservice to version $RELEASE_VERSION in the homolog environment."; then
+This PR updates only the $5 microservice in the homolog environment."; then
         printf "\033[0;32mIndividual PR created successfully\033[0m\n"
     else
         printf "\033[0;33mPR already exists or an error occurred, skipping...\033[0m\n"
@@ -129,13 +116,12 @@ elif [[ "$ENVIRONMENT" == "release" ]]; then
 
     printf "\033[0;32m============> Open individual PR: $BRANCH_NAME -> release \033[0m\n"
     export GITHUB_TOKEN=$3
-    if gh pr create --head $BRANCH_NAME --base release -t "[HOMOLOG] Deploy $5 - $RELEASE_VERSION" --body "**Microservice:** $5
-**Version:** $RELEASE_VERSION
+    if gh pr create --head $BRANCH_NAME --base release -t "[HOMOLOG] Deploy $5" --body "**Microservice:** $5
 **Environment:** Homolog
 **Deployed by:** $6
 **Branch:** $BRANCH_NAME
 
-This PR updates only the $5 microservice to version $RELEASE_VERSION in the homolog environment."; then
+This PR updates only the $5 microservice in the homolog environment."; then
         printf "\033[0;32mIndividual PR for homolog created successfully\033[0m\n"
     else
         printf "\033[0;33mPR for homolog already exists or an error occurred, skipping...\033[0m\n"
@@ -143,13 +129,12 @@ This PR updates only the $5 microservice to version $RELEASE_VERSION in the homo
 
     printf "\033[0;32m============> Open individual PR: $BRANCH_NAME -> master \033[0m\n"
     export GITHUB_TOKEN=$3
-    if gh pr create --head $BRANCH_NAME --base master -t "[PRODUCTION] Deploy $5 - $RELEASE_VERSION" --body "**Microservice:** $5
-**Version:** $RELEASE_VERSION
+    if gh pr create --head $BRANCH_NAME --base master -t "[PRODUCTION] Deploy $5" --body "**Microservice:** $5
 **Environment:** Production
 **Deployed by:** $6
 **Branch:** $BRANCH_NAME
 
-This PR updates only the $5 microservice to version $RELEASE_VERSION in the production environment."; then
+This PR updates only the $5 microservice in the production environment."; then
         printf "\033[0;32mIndividual PR for production created successfully\033[0m\n"
     else
         printf "\033[0;33mPR for production already exists or an error occurred, skipping...\033[0m\n"
