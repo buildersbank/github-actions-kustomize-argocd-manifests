@@ -4,7 +4,21 @@
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 BRANCH_NAME="deploy/$5/$TIMESTAMP"
 
-if [[ "$GITOPS_BRANCH" == "develop" ]]; then
+# Detect environment based on GitHub ref
+if [[ "$GITHUB_REF" == "refs/heads/develop" || "$GITHUB_REF" == *"test-individual-prs"* ]]; then
+    ENVIRONMENT="develop"
+elif [[ "$GITHUB_REF" == "refs/heads/homolog" ]]; then
+    ENVIRONMENT="homolog"  
+elif [[ "$GITHUB_REF" == "refs/heads/release" || "$GITHUB_REF" == "refs/heads/main" || "$GITHUB_REF" == "refs/heads/master" ]]; then
+    ENVIRONMENT="release"
+else
+    # Default to develop for other branches (including test branches)
+    ENVIRONMENT="develop"
+fi
+
+printf "\033[0;33m============> Detected environment: $ENVIRONMENT (from $GITHUB_REF) \033[0m\n"
+
+if [[ "$ENVIRONMENT" == "develop" ]]; then
     printf "\033[0;36m================================================================================================================> Condition 1: Develop environment \033[0m\n"
     printf "\033[0;32m============> Cloning $1 - Branch: develop \033[0m\n"
     GITOPS_REPO_FULL_URL="https://$3:x-oauth-basic@$2"
@@ -43,7 +57,7 @@ This PR updates only the $5 microservice to version $RELEASE_VERSION in the deve
         printf "\033[0;33mPR already exists or an error occurred, skipping...\033[0m\n"
     fi
 
-elif [[ "$GITOPS_BRANCH" == "homolog" ]]; then
+elif [[ "$ENVIRONMENT" == "homolog" ]]; then
     printf "\033[0;36m================================================================================================================> Condition 2: Homolog environment \033[0m\n"
     printf "\033[0;32m============> Cloning $1 - Branch: develop \033[0m\n"
     GITOPS_REPO_FULL_URL="https://$3:x-oauth-basic@$2"
@@ -82,7 +96,7 @@ This PR updates only the $5 microservice to version $RELEASE_VERSION in the homo
         printf "\033[0;33mPR already exists or an error occurred, skipping...\033[0m\n"
     fi
 
-elif [[ "$GITOPS_BRANCH" == "release" ]]; then
+elif [[ "$ENVIRONMENT" == "release" ]]; then
     printf "\033[0;36m================================================================================================================> Condition 3: New release (HML and PRD environment) \033[0m\n"
     printf "\033[0;32m============> Cloning $1 - Branch: develop \033[0m\n"
     GITOPS_REPO_FULL_URL="https://$3:x-oauth-basic@$2"
