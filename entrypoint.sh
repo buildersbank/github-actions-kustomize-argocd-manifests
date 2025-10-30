@@ -56,10 +56,11 @@ elif [[ "$GITOPS_BRANCH" == "homolog" ]]; then
 
     printf "\033[0;32m============> Open individual PR: $BRANCH_NAME -> release \033[0m\n"
     export GITHUB_TOKEN=$3
-    if gh pr create --head $BRANCH_NAME --base release -t "[HOMOLOG] Deploy $5" --body "**Microservice:** $5
+    if gh pr create --head $BRANCH_NAME --base release -t "[HOMOLOG] Deploy $5 - $RELEASE_VERSION" --body "**Microservice:** $5
 **Environment:** Homolog
 **Deployed by:** $6
 **Branch:** $BRANCH_NAME
+**Release version:** $RELEASE_VERSION
 
 This PR updates only the $5 microservice in the homolog environment."; then
         printf "\033[0;32mIndividual PR created successfully\033[0m\n"
@@ -100,10 +101,11 @@ elif [[ "$GITOPS_BRANCH" == "release" ]]; then
 
     printf "\033[0;32m============> Open individual PR: $BRANCH_NAME -> release \033[0m\n"
     export GITHUB_TOKEN=$3
-    if gh pr create --head $BRANCH_NAME --base release -t "[HOMOLOG] Deploy $5" --body "**Microservice:** $5
+    if gh pr create --head $BRANCH_NAME --base release -t "[HOMOLOG] Deploy $5 - $RELEASE_VERSION" --body "**Microservice:** $5
 **Environment:** Homolog
 **Deployed by:** $6
 **Branch:** $BRANCH_NAME
+**Release version:** $RELEASE_VERSION
 
 This PR updates only the $5 microservice in the homolog environment."; then
         printf "\033[0;32mIndividual PR for homolog created successfully\033[0m\n"
@@ -113,10 +115,11 @@ This PR updates only the $5 microservice in the homolog environment."; then
 
     printf "\033[0;32m============> Open individual PR: $BRANCH_NAME -> master \033[0m\n"
     export GITHUB_TOKEN=$3
-    if gh pr create --head $BRANCH_NAME --base master -t "[PRODUCTION] Deploy $5" --body "**Microservice:** $5
+    if gh pr create --head $BRANCH_NAME --base master -t "[PRODUCTION] Deploy $5 - $RELEASE_VERSION" --body "**Microservice:** $5
 **Environment:** Production
 **Deployed by:** $6
 **Branch:** $BRANCH_NAME
+**Release version:** $RELEASE_VERSION
 
 This PR updates only the $5 microservice in the production environment."; then
         printf "\033[0;32mIndividual PR for production created successfully\033[0m\n"
