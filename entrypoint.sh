@@ -13,6 +13,10 @@ if [[ "$GITOPS_BRANCH" == "develop" ]]; then
     echo "Repo $1 cloned!!!"
 
     printf "\033[0;32m============> Develop branch Kustomize step - DEV Overlay \033[0m\n"
+    if [ ! -d "k8s/$5/overlays/dev" ]; then
+        printf "\033[0;31mError: Directory k8s/$5/overlays/dev does not exist\033[0m\n"
+        exit 1
+    fi
     cd k8s/$5/overlays/dev
 
     kustomize edit set image IMAGE=$4:$RELEASE_VERSION
@@ -43,6 +47,10 @@ elif [[ "$GITOPS_BRANCH" == "homolog" ]]; then
     git checkout -b $BRANCH_NAME
 
     printf "\033[0;32m============> Homolog branch Kustomize step - HML Overlay \033[0m\n"
+    if [ ! -d "k8s/$5/overlays/homolog" ]; then
+        printf "\033[0;31mError: Directory k8s/$5/overlays/homolog does not exist\033[0m\n"
+        exit 1
+    fi
     cd k8s/$5/overlays/homolog
 
     kustomize edit set image IMAGE=$4:$RELEASE_VERSION
@@ -82,6 +90,10 @@ elif [[ "$GITOPS_BRANCH" == "release" ]]; then
     git checkout -b $BRANCH_NAME
 
     printf "\033[0;32m============> Release branch Kustomize step - HML Overlay \033[0m\n"
+    if [ ! -d "k8s/$5/overlays/homolog" ]; then
+        printf "\033[0;31mError: Directory k8s/$5/overlays/homolog does not exist\033[0m\n"
+        exit 1
+    fi
     cd k8s/$5/overlays/homolog
 
     kustomize edit set image IMAGE=$4:$RELEASE_VERSION
@@ -141,6 +153,10 @@ elif [[ "$GITOPS_BRANCH" == "master" ]]; then
     git checkout -b $BRANCH_NAME
 
     printf "\033[0;32m============> Master branch Kustomize step - PRD Overlay \033[0m\n"
+    if [ ! -d "k8s/$5/overlays/prod" ]; then
+        printf "\033[0;31mError: Directory k8s/$5/overlays/prod does not exist\033[0m\n"
+        exit 1
+    fi
     cd k8s/$5/overlays/prod
 
     kustomize edit set image IMAGE=$4:$RELEASE_VERSION
