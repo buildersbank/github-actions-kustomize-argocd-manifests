@@ -125,20 +125,6 @@ This PR updates only the $5 microservice in the homolog environment."; then
         printf "\033[0;33mPR for homolog already exists or an error occurred, skipping...\033[0m\n"
     fi
 
-    printf "\033[0;32m============> Open individual PR: $BRANCH_NAME -> master \033[0m\n"
-    export GITHUB_TOKEN=$3
-    if gh pr create --head $BRANCH_NAME --base master -t "[PRODUCTION] Deploy $5 - $RELEASE_VERSION" --body "**Microservice:** $5
-**Environment:** Production
-**Deployed by:** $6
-**Branch:** $BRANCH_NAME
-**Release version:** $RELEASE_VERSION
-
-This PR updates only the $5 microservice in the production environment."; then
-        printf "\033[0;32mIndividual PR for production created successfully\033[0m\n"
-    else
-        printf "\033[0;33mPR for production already exists or an error occurred, skipping...\033[0m\n"
-    fi
-
 elif [[ "$GITOPS_BRANCH" == "master" ]]; then
     printf "\033[0;36m================================================================================================================> Condition 4: Master environment (Production isolated deployment) \033[0m\n"
     printf "\033[0;32m============> Cloning $1 - Branch: master \033[0m\n"
