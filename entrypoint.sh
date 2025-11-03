@@ -99,16 +99,16 @@ elif [[ "$GITOPS_BRANCH" == "release" ]]; then
     kustomize edit set image IMAGE=$4:$RELEASE_VERSION
     echo "Done!!"
 
-    printf "\033[0;32m============> Release branch Kustomize step - PRD Overlay \033[0m\n"
-    cd ../prod
+    # printf "\033[0;32m============> Release branch Kustomize step - PRD Overlay \033[0m\n"
+    # cd ../prod
 
-    kustomize edit set image IMAGE=$4:$RELEASE_VERSION
-    echo "Done!!"
+    # kustomize edit set image IMAGE=$4:$RELEASE_VERSION
+    # echo "Done!!"
 
     printf "\033[0;32m============> Git commit and push individual branch \033[0m\n"
     cd ../../../..
     git add .
-    git commit -m "Deploy $5 to HML+PRD - version $RELEASE_VERSION by $6"
+    git commit -m "Deploy $5 to HML - version $RELEASE_VERSION by $6"
     git push origin $BRANCH_NAME
 
     printf "\033[0;32m============> Open individual PR: $BRANCH_NAME -> release \033[0m\n"
