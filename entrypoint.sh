@@ -145,7 +145,7 @@ This PR updates only the $5 microservice in the homolog environment."; then
     git push origin ${BRANCH_NAME}
 
     printf "\033[0;32m============> Open PR for PRODUCTION: ${BRANCH_NAME} -> release \033[0m\n"
-    if gh pr create --head ${BRANCH_NAME} --base release -t "[PRODUCTION] Deploy $5" --body "**Microservice:** $5
+    if gh pr create --head ${BRANCH_NAME} --base master -t "[PRODUCTION] Deploy $5" --body "**Microservice:** $5
 **Environment:** Production
 **Deployed by:** $6
 **Branch:** ${BRANCH_NAME}
