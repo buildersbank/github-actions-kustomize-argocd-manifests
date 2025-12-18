@@ -79,6 +79,7 @@ This PR updates only the $5 microservice in the homolog environment."; then
 fi
 
 if [[ "$GITOPS_BRANCH" == "release" ]]; then # Alem do nome, isso significa que estamos em uma versao de release (HML e PRD) (eg 2.0.0)
+    BRANCH_NAME="deploy/$GITOPS_BRANCH/$5"
     printf "\033[0;36m================================================================================================================> Condition 3: New release (HML and PRD environment) \033[0m\n"
     printf "\033[0;32m============> Cloning $1 - Branch: $GITOPS_BRANCH  \033[0m\n"
     GITOPS_REPO_FULL_URL="https://$3:x-oauth-basic@$2"
