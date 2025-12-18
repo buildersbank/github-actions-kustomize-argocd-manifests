@@ -93,7 +93,7 @@ if [[ "$GITOPS_BRANCH" == "release" ]]; then # Alem do nome, isso significa que 
 
     # ============ PR para PRODUÇÃO ============
     printf "\033[0;32m============> Returning to release branch for PRD PR \033[0m\n"
-    git checkout $GITOPS_BRANCH
+    git checkout master
 
     printf "\033[0;32m============> Creating branch for PRODUCTION: ${BRANCH_NAME} \033[0m\n"
     git checkout -b ${BRANCH_NAME}
