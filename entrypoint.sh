@@ -5,8 +5,7 @@ BRANCH_NAME="deploy/$GITOPS_BRANCH/$5"
 if [[ "$GITOPS_BRANCH" == "develop" ]]; then
     printf "\033[0;36m================================================================================================================> Condition 1: Develop environment \033[0m\n"
     printf "\033[0;32m============> Cloning $1 - Branch: develop \033[0m\n"
-    git config --global url."https://x-access-token:$3@github.com/".insteadOf "https://github.com/"
-    GITOPS_REPO_FULL_URL="https://$2"
+    GITOPS_REPO_FULL_URL="https://$3:x-oauth-basic@$2"
     git clone $GITOPS_REPO_FULL_URL -b develop
     cd $1
     git config --local user.email "action@github.com"
@@ -38,7 +37,7 @@ elif [[ "$GITOPS_BRANCH" == "homolog" ]] || [[ "$GITOPS_BRANCH" == "release" ]];
     BRANCH_NAME="deploy/homolog/$5"
     printf "\033[0;36m================================================================================================================> Condition 2: Homolog environment \033[0m\n"
     printf "\033[0;32m============> Cloning $1 - Branch: release \033[0m\n"
-    GITOPS_REPO_FULL_URL="https://x-access-token:$3@$2"
+    GITOPS_REPO_FULL_URL="https://$3:x-oauth-basic@$2"
     git clone $GITOPS_REPO_FULL_URL -b release
     cd $1
     git config --local user.email "action@github.com"
@@ -83,7 +82,7 @@ if [[ "$GITOPS_BRANCH" == "release" ]]; then # Alem do nome, isso significa que 
     BRANCH_NAME="deploy/$GITOPS_BRANCH/$5"
     printf "\033[0;36m================================================================================================================> Condition 3: New release (HML and PRD environment) \033[0m\n"
     printf "\033[0;32m============> Cloning $1 - Branch: $GITOPS_BRANCH  \033[0m\n"
-    GITOPS_REPO_FULL_URL="https://x-access-token:$3@$2"
+    GITOPS_REPO_FULL_URL="https://$3:x-oauth-basic@$2"
     git clone $GITOPS_REPO_FULL_URL -b master
     cd $1
     git config --local user.email "action@github.com"
