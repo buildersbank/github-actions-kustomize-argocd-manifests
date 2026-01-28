@@ -7,6 +7,7 @@ if [[ "$GITOPS_BRANCH" == "develop" ]]; then
     printf "\033[0;32m============> Cloning $1 - Branch: develop \033[0m\n"
     echo "TOKEN length: $3"
     GITOPS_REPO_FULL_URL="https://x-access-token:$3@$2"
+    echo $GITOPS_REPO_FULL_URL
     git clone $GITOPS_REPO_FULL_URL -b develop
     cd $1
     git config --local user.email "action@github.com"
