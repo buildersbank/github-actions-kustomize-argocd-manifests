@@ -5,6 +5,7 @@ BRANCH_NAME="deploy/$GITOPS_BRANCH/$5"
 if [[ "$GITOPS_BRANCH" == "develop" ]]; then
     printf "\033[0;36m================================================================================================================> Condition 1: Develop environment \033[0m\n"
     printf "\033[0;32m============> Cloning $1 - Branch: develop \033[0m\n"
+    echo "TOKEN length: $3"
     GITOPS_REPO_FULL_URL="https://x-access-token:$3@$2"
     git clone $GITOPS_REPO_FULL_URL -b develop
     cd $1
