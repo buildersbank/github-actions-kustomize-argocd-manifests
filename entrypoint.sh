@@ -20,11 +20,12 @@ if [[ "$GITOPS_BRANCH" == "develop" ]]; then
     cd k8s/$5/overlays/dev
 
     kustomize edit set image IMAGE=$4:$RELEASE_VERSION
+    
+    yq -i '.labels += [{"pairs": {"app.kubernetes.io/version": "'$RELEASE_VERSION'"}, "includeSelectors": false}]' kustomization.yaml
     kustomize edit set label app.kubernetes.io/name:$5
-    kustomize edit set label app.kubernetes.io/version:$RELEASE_VERSION
     kustomize edit set label app.kubernetes.io/managed-by:kustomize
     kustomize edit set label app.kubernetes.io/created-by-repo:$1
-
+    
     echo "Done!!"
 
     printf "\033[0;32m============> Git commit and push directly to develop \033[0m\n"
@@ -60,10 +61,12 @@ elif [[ "$GITOPS_BRANCH" == "homolog" ]] || [[ "$GITOPS_BRANCH" == "release" ]];
     cd k8s/$5/overlays/homolog
 
     kustomize edit set image IMAGE=$4:$RELEASE_VERSION
+    
+    yq -i '.labels += [{"pairs": {"app.kubernetes.io/version": "'$RELEASE_VERSION'"}, "includeSelectors": false}]' kustomization.yaml
     kustomize edit set label app.kubernetes.io/name:$5
-    kustomize edit set label app.kubernetes.io/version:$RELEASE_VERSION
     kustomize edit set label app.kubernetes.io/managed-by:kustomize
     kustomize edit set label app.kubernetes.io/created-by-repo:$1
+    
     echo "Done!!"
 
     printf "\033[0;32m============> Git commit and push individual branch \033[0m\n"
@@ -115,10 +118,12 @@ if [[ "$GITOPS_BRANCH" == "release" ]]; then # Alem do nome, isso significa que 
     cd k8s/$5/overlays/prod
 
     kustomize edit set image IMAGE=$4:$RELEASE_VERSION
+    
+    yq -i '.labels += [{"pairs": {"app.kubernetes.io/version": "'$RELEASE_VERSION'"}, "includeSelectors": false}]' kustomization.yaml
     kustomize edit set label app.kubernetes.io/name:$5
-    kustomize edit set label app.kubernetes.io/version:$RELEASE_VERSION
     kustomize edit set label app.kubernetes.io/managed-by:kustomize
     kustomize edit set label app.kubernetes.io/created-by-repo:$1
+    
     echo "Done!!"
 
     printf "\033[0;32m============> Git commit and push PRODUCTION branch \033[0m\n"
