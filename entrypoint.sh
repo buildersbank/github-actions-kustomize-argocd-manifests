@@ -23,7 +23,6 @@ if [[ "$GITOPS_BRANCH" == "develop" ]]; then
     kustomize edit set label app.kubernetes.io/name:$5
     kustomize edit set label app.kubernetes.io/version:$RELEASE_VERSION
     kustomize edit set label app.kubernetes.io/managed-by:kustomize
-    kustomize edit set label app.kubernetes.io/created-by:$6
     kustomize edit set label app.kubernetes.io/created-by-repo:$1
 
     echo "Done!!"
@@ -64,7 +63,6 @@ elif [[ "$GITOPS_BRANCH" == "homolog" ]] || [[ "$GITOPS_BRANCH" == "release" ]];
     kustomize edit set label app.kubernetes.io/name:$5
     kustomize edit set label app.kubernetes.io/version:$RELEASE_VERSION
     kustomize edit set label app.kubernetes.io/managed-by:kustomize
-    kustomize edit set label app.kubernetes.io/created-by:$6
     kustomize edit set label app.kubernetes.io/created-by-repo:$1
     echo "Done!!"
 
@@ -120,7 +118,6 @@ if [[ "$GITOPS_BRANCH" == "release" ]]; then # Alem do nome, isso significa que 
     kustomize edit set label app.kubernetes.io/name:$5
     kustomize edit set label app.kubernetes.io/version:$RELEASE_VERSION
     kustomize edit set label app.kubernetes.io/managed-by:kustomize
-    kustomize edit set label app.kubernetes.io/created-by:$6
     kustomize edit set label app.kubernetes.io/created-by-repo:$1
     echo "Done!!"
 
