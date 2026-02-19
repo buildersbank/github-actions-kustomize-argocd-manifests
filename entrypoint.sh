@@ -8,7 +8,7 @@ if [[ "$GITOPS_BRANCH" == "develop" ]]; then
     GITOPS_REPO_FULL_URL="https://x-access-token:$3@$2"
     git clone $GITOPS_REPO_FULL_URL -b develop
     cd $1
-    git config --local user.email "action@github.com"
+    git config --local user.email "action@finaya.tech"
     git config --local user.name "GitHub Action"
     echo "Repo $1 cloned!!!"
 
@@ -46,7 +46,7 @@ elif [[ "$GITOPS_BRANCH" == "homolog" ]] || [[ "$GITOPS_BRANCH" == "release" ]];
     GITOPS_REPO_FULL_URL="https://x-access-token:$3@$2"
     git clone $GITOPS_REPO_FULL_URL -b release
     cd $1
-    git config --local user.email "action@github.com"
+    git config --local user.email "action@finaya.tech"
     git config --local user.name "GitHub Action"
     echo "Repo $1 cloned!!!"
 
@@ -96,7 +96,7 @@ if [[ "$GITOPS_BRANCH" == "release" ]]; then # Alem do nome, isso significa que 
     GITOPS_REPO_FULL_URL="https://x-access-token:$3@$2"
     git clone $GITOPS_REPO_FULL_URL -b master
     cd $1
-    git config --local user.email "action@github.com"
+    git config --local user.email "action@finaya.tech"
     git config --local user.name "GitHub Action"
     echo "Repo $1 cloned!!!"
 
