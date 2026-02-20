@@ -21,7 +21,8 @@ if [[ "$GITOPS_BRANCH" == "develop" ]]; then
 
     kustomize edit set image IMAGE=$4:$RELEASE_VERSION
     
-    yq -i '.labels += [{"pairs": {"app.kubernetes.io/version": "'$RELEASE_VERSION'"}, "includeSelectors": false}]' kustomization.yaml
+    # Remove entries de version existentes e adiciona o novo
+    yq -i 'del(.labels[] | select(.pairs."app.kubernetes.io/version")) | .labels += [{"pairs": {"app.kubernetes.io/version": "'$RELEASE_VERSION'"}, "includeSelectors": false, "includeTemplates": true}]' kustomization.yaml
     kustomize edit set label app.kubernetes.io/name:$5
     kustomize edit set label app.kubernetes.io/managed-by:kustomize
     kustomize edit set label app.kubernetes.io/created-by-repo:$1
@@ -62,7 +63,8 @@ elif [[ "$GITOPS_BRANCH" == "homolog" ]] || [[ "$GITOPS_BRANCH" == "release" ]];
 
     kustomize edit set image IMAGE=$4:$RELEASE_VERSION
     
-    yq -i '.labels += [{"pairs": {"app.kubernetes.io/version": "'$RELEASE_VERSION'"}, "includeSelectors": false}]' kustomization.yaml
+    # Remove entries de version existentes e adiciona o novo
+    yq -i 'del(.labels[] | select(.pairs."app.kubernetes.io/version")) | .labels += [{"pairs": {"app.kubernetes.io/version": "'$RELEASE_VERSION'"}, "includeSelectors": false, "includeTemplates": true}]' kustomization.yaml
     kustomize edit set label app.kubernetes.io/name:$5
     kustomize edit set label app.kubernetes.io/managed-by:kustomize
     kustomize edit set label app.kubernetes.io/created-by-repo:$1
@@ -119,7 +121,8 @@ if [[ "$GITOPS_BRANCH" == "release" ]]; then # Alem do nome, isso significa que 
 
     kustomize edit set image IMAGE=$4:$RELEASE_VERSION
     
-    yq -i '.labels += [{"pairs": {"app.kubernetes.io/version": "'$RELEASE_VERSION'"}, "includeSelectors": false}]' kustomization.yaml
+    # Remove entries de version existentes e adiciona o novo
+    yq -i 'del(.labels[] | select(.pairs."app.kubernetes.io/version")) | .labels += [{"pairs": {"app.kubernetes.io/version": "'$RELEASE_VERSION'"}, "includeSelectors": false, "includeTemplates": true}]' kustomization.yaml
     kustomize edit set label app.kubernetes.io/name:$5
     kustomize edit set label app.kubernetes.io/managed-by:kustomize
     kustomize edit set label app.kubernetes.io/created-by-repo:$1
