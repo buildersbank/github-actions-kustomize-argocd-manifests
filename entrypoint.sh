@@ -1,151 +1,134 @@
 #!/bin/bash
+set -e
 
-BRANCH_NAME="deploy/$GITOPS_BRANCH/$5"
+GITOPS_REPO_NAME="$1"
+GITOPS_REPO_URL="$2"
+GH_ACCESS_TOKEN="$3"
+IMAGE_NAME="$4"
+APP_ID="$5"
+GITHUB_ACTOR="$6"
+
+# --- Logging helpers ---
+log_header() { printf "\033[0;36m=> %s\033[0m\n" "$1"; }
+log_step()   { printf "\033[0;32m=> %s\033[0m\n" "$1"; }
+log_error()  { printf "\033[0;31m=> %s\033[0m\n" "$1"; }
+log_warn()   { printf "\033[0;33m=> %s\033[0m\n" "$1"; }
+
+# --- Reusable functions ---
+clone_repo() {
+  local branch="$1"
+  log_step "Cloning ${GITOPS_REPO_NAME} - Branch: ${branch}"
+  git clone "https://x-access-token:${GH_ACCESS_TOKEN}@${GITOPS_REPO_URL}" -b "$branch"
+  cd "${GITOPS_REPO_NAME}"
+  git config --local user.email "action@finaya.tech"
+  git config --local user.name "GitHub Action"
+  echo "Repo ${GITOPS_REPO_NAME} cloned!!!"
+  REPO_ROOT="$(pwd)"
+}
+
+apply_kustomize() {
+  local overlay="$1"
+  local overlay_dir="k8s/${APP_ID}/overlays/${overlay}"
+  if [ ! -d "$overlay_dir" ]; then
+    log_error "Error: Directory ${overlay_dir} does not exist"
+    exit 1
+  fi
+  cd "$overlay_dir"
+
+  if grep -rql "kind: FinayaApplication" . >/dev/null 2>&1; then
+    log_step "FinayaApplication detected - updating image directly"
+    local app_file
+    app_file=$(grep -rl "kind: FinayaApplication" .)
+    yq -i '.spec.image.repository = "'"${IMAGE_NAME}"'" | .spec.image.tag = "'"${RELEASE_VERSION}"'"' "$app_file"
+  else
+    kustomize edit set image "IMAGE=${IMAGE_NAME}:${RELEASE_VERSION}"
+    yq -i 'del(.labels[] | select(.pairs."app.kubernetes.io/version")) | .labels += [{"pairs": {"app.kubernetes.io/version": "'"${RELEASE_VERSION}"'"}, "includeSelectors": false, "includeTemplates": true}]' kustomization.yaml
+    kustomize edit set label "app.kubernetes.io/name:${APP_ID}"
+    kustomize edit set label "app.kubernetes.io/managed-by:kustomize"
+    kustomize edit set label "app.kubernetes.io/created-by-repo:${GITOPS_REPO_NAME}"
+  fi
+  echo "Done!!"
+  cd "$REPO_ROOT"
+}
+
+create_pr() {
+  local head="$1" base="$2" env_name="$3" env_display="$4"
+  export GITHUB_TOKEN="${GH_ACCESS_TOKEN}"
+  if gh pr create --head "$head" --base "$base" \
+    -t "[${env_display}] Deploy ${APP_ID}" \
+    --body "**Microservice:** ${APP_ID}
+**Environment:** ${env_name}
+**Deployed by:** ${GITHUB_ACTOR}
+**Branch:** ${head}
+**Release version:** ${RELEASE_VERSION}
+
+This PR updates only the ${APP_ID} microservice in the ${env_name,,} environment."; then
+    log_step "PR created successfully"
+  else
+    log_warn "PR already exists or an error occurred, skipping..."
+  fi
+}
+
+# --- Main logic ---
 
 if [[ "$GITOPS_BRANCH" == "develop" ]]; then
-    printf "\033[0;36m================================================================================================================> Condition 1: Develop environment \033[0m\n"
-    printf "\033[0;32m============> Cloning $1 - Branch: develop \033[0m\n"
-    GITOPS_REPO_FULL_URL="https://x-access-token:$3@$2"
-    git clone $GITOPS_REPO_FULL_URL -b develop
-    cd $1
-    git config --local user.email "action@finaya.tech"
-    git config --local user.name "GitHub Action"
-    echo "Repo $1 cloned!!!"
+  log_header "Condition 1: Develop environment"
+  clone_repo develop
 
-    printf "\033[0;32m============> Develop branch Kustomize step - DEV Overlay \033[0m\n"
-    if [ ! -d "k8s/$5/overlays/dev" ]; then
-        printf "\033[0;31mError: Directory k8s/$5/overlays/dev does not exist\033[0m\n"
-        exit 1
-    fi
-    cd k8s/$5/overlays/dev
+  log_step "Develop branch Kustomize step - DEV Overlay"
+  apply_kustomize dev
 
-    kustomize edit set image IMAGE=$4:$RELEASE_VERSION
-    
-    # Remove entries de version existentes e adiciona o novo
-    yq -i 'del(.labels[] | select(.pairs."app.kubernetes.io/version")) | .labels += [{"pairs": {"app.kubernetes.io/version": "'$RELEASE_VERSION'"}, "includeSelectors": false, "includeTemplates": true}]' kustomization.yaml
-    kustomize edit set label app.kubernetes.io/name:$5
-    kustomize edit set label app.kubernetes.io/managed-by:kustomize
-    kustomize edit set label app.kubernetes.io/created-by-repo:$1
-    
-    echo "Done!!"
+  log_step "Git commit and push directly to develop"
+  git add .
+  git commit -m "Deploy ${APP_ID} to DEV - version ${RELEASE_VERSION} by ${GITHUB_ACTOR}"
+  git push origin develop
 
-    printf "\033[0;32m============> Git commit and push directly to develop \033[0m\n"
-    cd ../../../..
-    git add .
-    git commit -m "Deploy $5 to DEV - version $RELEASE_VERSION by $6"
-    git push origin develop
-
-    printf "\033[0;32m============> Merge develop into release branch \033[0m\n"
-    git checkout release
-    git merge develop
-    git push origin release
+  log_step "Merge develop into release branch"
+  git checkout release
+  git merge develop
+  git push origin release
 
 elif [[ "$GITOPS_BRANCH" == "homolog" ]] || [[ "$GITOPS_BRANCH" == "release" ]]; then
-    BRANCH_NAME="deploy/homolog/$5"
-    printf "\033[0;36m================================================================================================================> Condition 2: Homolog environment \033[0m\n"
-    printf "\033[0;32m============> Cloning $1 - Branch: release \033[0m\n"
-    GITOPS_REPO_FULL_URL="https://x-access-token:$3@$2"
-    git clone $GITOPS_REPO_FULL_URL -b release
-    cd $1
-    git config --local user.email "action@finaya.tech"
-    git config --local user.name "GitHub Action"
-    echo "Repo $1 cloned!!!"
+  BRANCH_NAME="deploy/homolog/${APP_ID}"
+  log_header "Condition 2: Homolog environment"
+  clone_repo release
 
-    printf "\033[0;32m============> Creating individual branch: $BRANCH_NAME \033[0m\n"
-    git checkout -b $BRANCH_NAME
+  log_step "Creating individual branch: ${BRANCH_NAME}"
+  git checkout -b "${BRANCH_NAME}"
 
-    printf "\033[0;32m============> Homolog branch Kustomize step - HML Overlay \033[0m\n"
-    if [ ! -d "k8s/$5/overlays/homolog" ]; then
-        printf "\033[0;31mError: Directory k8s/$5/overlays/homolog does not exist\033[0m\n"
-        exit 1
-    fi
-    cd k8s/$5/overlays/homolog
+  log_step "Homolog branch Kustomize step - HML Overlay"
+  apply_kustomize homolog
 
-    kustomize edit set image IMAGE=$4:$RELEASE_VERSION
-    
-    # Remove entries de version existentes e adiciona o novo
-    yq -i 'del(.labels[] | select(.pairs."app.kubernetes.io/version")) | .labels += [{"pairs": {"app.kubernetes.io/version": "'$RELEASE_VERSION'"}, "includeSelectors": false, "includeTemplates": true}]' kustomization.yaml
-    kustomize edit set label app.kubernetes.io/name:$5
-    kustomize edit set label app.kubernetes.io/managed-by:kustomize
-    kustomize edit set label app.kubernetes.io/created-by-repo:$1
-    
-    echo "Done!!"
+  log_step "Git commit and push individual branch"
+  git add .
+  git commit -m "Deploy ${APP_ID} to HOMOLOG - version ${RELEASE_VERSION} by ${GITHUB_ACTOR}"
+  git push origin "${BRANCH_NAME}"
 
-    printf "\033[0;32m============> Git commit and push individual branch \033[0m\n"
-    cd ../../../..
-    git add .
-    git commit -m "Deploy $5 to HOMOLOG - version $RELEASE_VERSION by $6"
-    git push origin $BRANCH_NAME
-
-    printf "\033[0;32m============> Open individual PR: $BRANCH_NAME -> release \033[0m\n"
-    export GITHUB_TOKEN=$3
-    if gh pr create --head $BRANCH_NAME --base release -t "[HOMOLOG] Deploy $5" --body "**Microservice:** $5
-**Environment:** Homolog
-**Deployed by:** $6
-**Branch:** $BRANCH_NAME
-**Release version:** $RELEASE_VERSION
-
-This PR updates only the $5 microservice in the homolog environment."; then
-        printf "\033[0;32mIndividual PR created successfully\033[0m\n"
-    else
-        printf "\033[0;33mPR already exists or an error occurred, skipping...\033[0m\n"
-    fi
+  log_step "Open individual PR: ${BRANCH_NAME} -> release"
+  create_pr "${BRANCH_NAME}" release "Homolog" "HOMOLOG"
 fi
 
-if [[ "$GITOPS_BRANCH" == "release" ]]; then # Alem do nome, isso significa que estamos em uma versao de release (HML e PRD) (eg 2.0.0)
-    BRANCH_NAME="deploy/$GITOPS_BRANCH/$5"
-    printf "\033[0;36m================================================================================================================> Condition 3: New release (HML and PRD environment) \033[0m\n"
-    printf "\033[0;32m============> Cloning $1 - Branch: $GITOPS_BRANCH  \033[0m\n"
-    GITOPS_REPO_FULL_URL="https://x-access-token:$3@$2"
-    git clone $GITOPS_REPO_FULL_URL -b master
-    cd $1
-    git config --local user.email "action@finaya.tech"
-    git config --local user.name "GitHub Action"
-    echo "Repo $1 cloned!!!"
+if [[ "$GITOPS_BRANCH" == "release" ]]; then
+  BRANCH_NAME="deploy/${GITOPS_BRANCH}/${APP_ID}"
+  log_header "Condition 3: New release (HML and PRD environment)"
+  clone_repo master
 
-    export GITHUB_TOKEN=$3
+  export GITHUB_TOKEN="${GH_ACCESS_TOKEN}"
 
-    # ============ PR para PRODUÇÃO ============
-    printf "\033[0;32m============> Returning to release branch for PRD PR \033[0m\n"
-    git checkout master
+  log_step "Returning to release branch for PRD PR"
+  git checkout master
 
-    printf "\033[0;32m============> Creating branch for PRODUCTION: ${BRANCH_NAME} \033[0m\n"
-    git checkout -b ${BRANCH_NAME}
+  log_step "Creating branch for PRODUCTION: ${BRANCH_NAME}"
+  git checkout -b "${BRANCH_NAME}"
 
-    printf "\033[0;32m============> Release branch Kustomize step - PRD Overlay \033[0m\n"
-    if [ ! -d "k8s/$5/overlays/prod" ]; then
-        printf "\033[0;31mError: Directory k8s/$5/overlays/prod does not exist\033[0m\n"
-        exit 1
-    fi
-    cd k8s/$5/overlays/prod
+  log_step "Release branch Kustomize step - PRD Overlay"
+  apply_kustomize prod
 
-    kustomize edit set image IMAGE=$4:$RELEASE_VERSION
-    
-    # Remove entries de version existentes e adiciona o novo
-    yq -i 'del(.labels[] | select(.pairs."app.kubernetes.io/version")) | .labels += [{"pairs": {"app.kubernetes.io/version": "'$RELEASE_VERSION'"}, "includeSelectors": false, "includeTemplates": true}]' kustomization.yaml
-    kustomize edit set label app.kubernetes.io/name:$5
-    kustomize edit set label app.kubernetes.io/managed-by:kustomize
-    kustomize edit set label app.kubernetes.io/created-by-repo:$1
-    
-    echo "Done!!"
+  log_step "Git commit and push PRODUCTION branch"
+  git add "k8s/${APP_ID}/overlays/prod"
+  git commit -m "Deploy ${APP_ID} to PRD - version ${RELEASE_VERSION} by ${GITHUB_ACTOR}"
+  git push origin "${BRANCH_NAME}"
 
-    printf "\033[0;32m============> Git commit and push PRODUCTION branch \033[0m\n"
-    cd ../../../..
-    git add k8s/$5/overlays/prod
-    git commit -m "Deploy $5 to PRD - version $RELEASE_VERSION by $6"
-    git push origin ${BRANCH_NAME}
-
-    printf "\033[0;32m============> Open PR for PRODUCTION: ${BRANCH_NAME} -> release \033[0m\n"
-    if gh pr create --head ${BRANCH_NAME} --base master -t "[PRODUCTION] Deploy $5" --body "**Microservice:** $5
-**Environment:** Production
-**Deployed by:** $6
-**Branch:** ${BRANCH_NAME}
-**Release version:** $RELEASE_VERSION
-
-This PR updates only the $5 microservice in the production environment."; then
-        printf "\033[0;32mPR for production created successfully\033[0m\n"
-    else
-        printf "\033[0;33mPR for production already exists or an error occurred, skipping...\033[0m\n"
-    fi
-
+  log_step "Open PR for PRODUCTION: ${BRANCH_NAME} -> master"
+  create_pr "${BRANCH_NAME}" master "Production" "PRODUCTION"
 fi
