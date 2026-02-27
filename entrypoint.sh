@@ -69,6 +69,26 @@ This PR updates only the ${APP_ID} microservice in the ${env_name,,} environment
   fi
 }
 
+git_push_with_retry() {
+  local branch="$1"
+  local max_attempts=3
+
+  for attempt in $(seq 1 "$max_attempts"); do
+    if git push origin "$branch"; then
+      return 0
+    fi
+    if [ "$attempt" -lt "$max_attempts" ]; then
+      local wait_time=$((RANDOM % 3 + 1))
+      log_warn "Push to ${branch} failed (attempt ${attempt}/${max_attempts}). Retrying in ${wait_time}s..."
+      sleep "$wait_time"
+      git pull --rebase origin "$branch"
+    fi
+  done
+
+  log_error "Push to ${branch} failed after ${max_attempts} attempts"
+  exit 1
+}
+
 delete_remote_branch_if_exists() {
   local branch="$1"
 
@@ -93,12 +113,13 @@ if [[ "$GITOPS_BRANCH" == "develop" ]]; then
   log_step "Git commit and push directly to develop"
   git add .
   git commit -m "Deploy ${APP_ID} to DEV - version ${RELEASE_VERSION} by ${GITHUB_ACTOR}"
-  git push origin develop
+  git_push_with_retry develop
 
   log_step "Merge develop into release branch"
   git checkout release
+  git pull origin release
   git merge develop
-  git push origin release
+  git_push_with_retry release
 
 elif [[ "$GITOPS_BRANCH" == "homolog" ]] || [[ "$GITOPS_BRANCH" == "release" ]]; then
   BRANCH_NAME="deploy/homolog/${APP_ID}"
