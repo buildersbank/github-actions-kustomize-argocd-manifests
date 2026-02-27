@@ -69,6 +69,18 @@ This PR updates only the ${APP_ID} microservice in the ${env_name,,} environment
   fi
 }
 
+delete_remote_branch_if_exists() {
+  local branch="$1"
+
+  if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+    log_warn "Remote branch ${branch} already exists. Deleting..."
+    git push origin --delete "$branch"
+    log_step "Remote branch ${branch} deleted"
+  else
+    log_step "Remote branch ${branch} does not exist. Continuing..."
+  fi
+}
+
 # --- Main logic ---
 
 if [[ "$GITOPS_BRANCH" == "develop" ]]; then
@@ -93,6 +105,8 @@ elif [[ "$GITOPS_BRANCH" == "homolog" ]] || [[ "$GITOPS_BRANCH" == "release" ]];
   log_header "Condition 2: Homolog environment"
   clone_repo release
 
+  delete_remote_branch_if_exists "${BRANCH_NAME}"
+  
   log_step "Creating individual branch: ${BRANCH_NAME}"
   git checkout -b "${BRANCH_NAME}"
 
@@ -117,6 +131,8 @@ if [[ "$GITOPS_BRANCH" == "release" ]]; then
 
   log_step "Returning to release branch for PRD PR"
   git checkout master
+
+  delete_remote_branch_if_exists "${BRANCH_NAME}"
 
   log_step "Creating branch for PRODUCTION: ${BRANCH_NAME}"
   git checkout -b "${BRANCH_NAME}"
