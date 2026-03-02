@@ -121,7 +121,7 @@ if [[ "$GITOPS_BRANCH" == "develop" ]]; then
   git merge develop
   git_push_with_retry release
 
-elif [[ "$GITOPS_BRANCH" == "homolog" ]] || [[ "$GITOPS_BRANCH" == "release" || [[ "$GITOPS_BRANCH" == "develop-assai" ]]; then
+elif [[ "$GITOPS_BRANCH" == "homolog" ]] || [[ "$GITOPS_BRANCH" == "release" ]] || [[ "$GITOPS_BRANCH" == "develop-assai" ]]; then
   BRANCH_NAME="deploy/homolog/${APP_ID}"
   log_header "Condition 2: Homolog environment"
   clone_repo release
