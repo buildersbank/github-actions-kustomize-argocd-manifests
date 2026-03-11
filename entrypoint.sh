@@ -118,7 +118,7 @@ if [[ "$GITOPS_BRANCH" == "develop" ]]; then
   log_step "Merge develop into release branch"
   git checkout release
   git pull origin release
-  git merge develop
+  git merge develop -X theirs --no-edit
   git_push_with_retry release
 
 elif [[ "$GITOPS_BRANCH" == "homolog" ]] || [[ "$GITOPS_BRANCH" == "release" ]]; then
