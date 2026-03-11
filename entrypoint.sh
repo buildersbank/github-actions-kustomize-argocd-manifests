@@ -69,6 +69,22 @@ This PR updates only the ${APP_ID} microservice in the ${env_name,,} environment
   fi
 }
 
+commit_and_push() {
+  local branch="$1" message="$2"
+  shift 2
+  local add_paths=("$@")
+
+  git add "${add_paths[@]:-.}"
+
+  if git diff --cached --quiet; then
+    log_warn "No changes to commit - already up to date"
+    return 0
+  fi
+
+  git commit -m "$message"
+  git_push_with_retry "$branch"
+}
+
 git_push_with_retry() {
   local branch="$1"
   local max_attempts=3
@@ -111,9 +127,7 @@ if [[ "$GITOPS_BRANCH" == "develop" ]]; then
   apply_kustomize dev
 
   log_step "Git commit and push directly to develop"
-  git add .
-  git commit -m "Deploy ${APP_ID} to DEV - version ${RELEASE_VERSION} by ${GITHUB_ACTOR}"
-  git_push_with_retry develop
+  commit_and_push develop "Deploy ${APP_ID} to DEV - version ${RELEASE_VERSION} by ${GITHUB_ACTOR}"
 
   log_step "Merge develop into release branch"
   git checkout release
@@ -135,9 +149,7 @@ elif [[ "$GITOPS_BRANCH" == "homolog" ]] || [[ "$GITOPS_BRANCH" == "release" ]];
   apply_kustomize homolog
 
   log_step "Git commit and push individual branch"
-  git add .
-  git commit -m "Deploy ${APP_ID} to HOMOLOG - version ${RELEASE_VERSION} by ${GITHUB_ACTOR}"
-  git push origin "${BRANCH_NAME}"
+  commit_and_push "${BRANCH_NAME}" "Deploy ${APP_ID} to HOMOLOG - version ${RELEASE_VERSION} by ${GITHUB_ACTOR}"
 
   log_step "Open individual PR: ${BRANCH_NAME} -> release"
   create_pr "${BRANCH_NAME}" release "Homolog" "HOMOLOG"
@@ -162,9 +174,7 @@ if [[ "$GITOPS_BRANCH" == "release" ]]; then
   apply_kustomize prod
 
   log_step "Git commit and push PRODUCTION branch"
-  git add "k8s/${APP_ID}/overlays/prod"
-  git commit -m "Deploy ${APP_ID} to PRD - version ${RELEASE_VERSION} by ${GITHUB_ACTOR}"
-  git push origin "${BRANCH_NAME}"
+  commit_and_push "${BRANCH_NAME}" "Deploy ${APP_ID} to PRD - version ${RELEASE_VERSION} by ${GITHUB_ACTOR}" "k8s/${APP_ID}/overlays/prod"
 
   log_step "Open PR for PRODUCTION: ${BRANCH_NAME} -> master"
   create_pr "${BRANCH_NAME}" master "Production" "PRODUCTION"
