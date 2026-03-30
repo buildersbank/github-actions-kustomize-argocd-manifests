@@ -46,7 +46,7 @@ apply_kustomize() {
     kustomize edit set label "app.kubernetes.io/name:${APP_ID}"
     kustomize edit set label "app.kubernetes.io/managed-by:kustomize"
     kustomize edit set label "app.kubernetes.io/created-by-repo:${GITOPS_REPO_NAME}"
-    kustomize edit set annotation "finaya.github.origin/branch:${GITHUB_REF_NAME}"
+    kustomize edit set annotation "finaya.tech/origin:${GITHUB_REF_NAME}"
   fi
   echo "Done!!"
   cd "$REPO_ROOT"
