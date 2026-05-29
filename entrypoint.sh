@@ -1,12 +1,23 @@
 #!/bin/bash
 set -e
 
-GITOPS_REPO_NAME="$1"
-GITOPS_REPO_URL="$2"
-GH_ACCESS_TOKEN="$3"
-IMAGE_NAME="$4"
-APP_ID="$5"
-GITHUB_ACTOR="$6"
+# Seed $RANDOM from /dev/urandom. This container's entrypoint runs as PID 1, so
+# bash's default PID-based RANDOM seed is IDENTICAL across concurrently-started
+# containers -> the backoff jitter below would collapse and racers would retry
+# in lockstep, defeating its purpose. (od + /dev/urandom exist in alpine.)
+RANDOM=$(od -An -N2 -tu2 /dev/urandom 2>/dev/null | tr -dc 0-9); : "${RANDOM:=$$}"
+
+# Positional params are safe to assign only when executed (not sourced for tests).
+# The test harness sets ENTRYPOINT_TEST_SOURCE=1 under `set -u`; using plain "$1"
+# here would cause "unbound variable" because bash sees $1..$6 as unset when
+# sourced without arguments. Use ${N-} (dash, not colon-dash) so that an explicit
+# empty arg is still preserved in normal execution, while sourcing gets "".
+GITOPS_REPO_NAME="${1-}"
+GITOPS_REPO_URL="${2-}"
+GH_ACCESS_TOKEN="${3-}"
+IMAGE_NAME="${4-}"
+APP_ID="${5-}"
+GITHUB_ACTOR="${6-}"
 
 # --- Logging helpers ---
 log_header() { printf "\033[0;36m=> %s\033[0m\n" "$1"; }
@@ -75,35 +86,62 @@ commit_and_push() {
   shift 2
   local add_paths=("$@")
 
-  git add "${add_paths[@]:-.}"
+  # Explicit `|| return 1` on every step: this function is now invoked from an
+  # `if !` in the DEV path, which DISABLES `set -e` inside it and its callees.
+  # Without explicit checks a failed add/commit would fall through to a no-op
+  # "success". Hardened so it is correct in any calling context.
+  git add "${add_paths[@]:-.}" || return 1
 
   if git diff --cached --quiet; then
-    log_warn "No changes to commit - already up to date"
+    log_warn "No changes to commit - already up to date"   # idempotent: rerun-safe
     return 0
   fi
 
-  git commit -m "$message"
-  git_push_with_retry "$branch"
+  git commit -m "$message" || return 1
+  git_push_with_retry "$branch" || return 1   # explicit so a later inserted line can't mask it
 }
 
 git_push_with_retry() {
   local branch="$1"
-  local max_attempts=3
+  local max_attempts="${GIT_PUSH_MAX_ATTEMPTS:-8}"   # env-overridable for tests
+  local attempt base jitter wait_time rebase_exit
+  if [ "$max_attempts" -lt 1 ]; then
+    log_error "GIT_PUSH_MAX_ATTEMPTS must be >= 1 (got '${max_attempts}')"; return 1
+  fi
 
   for attempt in $(seq 1 "$max_attempts"); do
     if git push origin "$branch"; then
+      log_step "Push to '${branch}' succeeded on attempt ${attempt}."
       return 0
     fi
     if [ "$attempt" -lt "$max_attempts" ]; then
-      local wait_time=$((RANDOM % 3 + 1))
-      log_warn "Push to ${branch} failed (attempt ${attempt}/${max_attempts}). Retrying in ${wait_time}s..."
+      base=$(( 1 << (attempt - 1) )); [ "$base" -gt 16 ] && base=16   # 1,2,4,8,16,16,16
+      jitter=$(( RANDOM % 5 ))                                        # 0..4s de-sync racers
+      wait_time=$(( base + jitter ))
+      log_warn "Push to '${branch}' failed (attempt ${attempt}/${max_attempts}); rebase+retry in ${wait_time}s."
       sleep "$wait_time"
-      git pull --rebase origin "$branch"
+      # Replay our commit on top of the remote tip. `-X theirs`: on a content
+      # conflict (only when the SAME service is deployed twice concurrently) keep
+      # our replayed commit's value. (During rebase, "theirs" == the commits being
+      # replayed == ours.) Different services edit different overlay files -> no
+      # conflict -> clean auto-merge. RESIDUAL: same-service concurrent deploys
+      # become last-pusher-wins; fully solved only by the single-writer batch
+      # (tracked separately). Without a strategy the rebase would CONFLICT and the
+      # loop would burn every attempt -> a hard false failure.
+      rebase_exit=0
+      git pull --rebase -X theirs origin "$branch" || rebase_exit=$?
+      if [ "$rebase_exit" -ne 0 ]; then
+        log_warn "Rebase failed (exit ${rebase_exit}); aborting to retry from a clean tree."
+        # Three non-zero rebase outcomes: (1) network/fetch failure -> no rebase in
+        # progress, --abort exits 128 (suppressed), tree unchanged, next attempt retries;
+        # (2) mid-rebase conflict -> --abort exits 0, tree restored; (3) other -> same as (2).
+        git rebase --abort 2>/dev/null || true
+      fi
     fi
   done
 
-  log_error "Push to ${branch} failed after ${max_attempts} attempts"
-  exit 1
+  log_error "Push to '${branch}' failed after ${max_attempts} attempts."
+  return 1
 }
 
 delete_remote_branch_if_exists() {
@@ -118,23 +156,70 @@ delete_remote_branch_if_exists() {
   fi
 }
 
+# Mirror develop -> release (a convenience mirror for the next homolog promotion;
+# ArgoCD watches develop, NOT release). Returns 0 (ok) / 1 (transient: fetch/checkout/push) /
+# 2 (structural merge conflict — manual fix). Called in an `if`/`||` context, so set -e
+# is suspended in its body — every step is guarded explicitly.
+# `release` is a tracking checkout (no unique local commits), so REBUILD it from
+# origin each time (fetch + checkout -B) instead of rebasing -> branch-tip
+# conflicts impossible; `-X theirs` resolves the per-file kustomize tag merge.
+# HAZARD (pre-existing, accepted): -X theirs makes develop win, so a release-only
+# hotfix not yet in develop would be clobbered. In this GitOps flow release tracks
+# develop, so this is acceptable; documented so it is not a surprise.
+sync_develop_to_release() {
+  git fetch origin release                 || { log_warn "fetch release failed";   return 1; }
+  git checkout -B release origin/release   || { log_warn "checkout release failed"; return 1; }
+  if ! git merge develop -X theirs --no-edit; then
+    # Return 2 = STRUCTURAL conflict (e.g. modify/delete, which -X theirs cannot
+    # auto-resolve). NOT a transient race — rerunning will not help; a human must
+    # reconcile develop vs release. See build-deploy#53 / finaya-kubernetes-manifests#624.
+    log_warn "merge develop->release CONFLICT — manual reconciliation needed (not a transient race)."
+    git merge --abort 2>/dev/null || true
+    return 2
+  fi
+  git_push_with_retry release   # 0 on success; 1 = transient (push race exhausted)
+}
+
+# Unit tests source this file to exercise the functions above WITHOUT running the
+# deploy. `return` is valid in a sourced script; when executed normally
+# ENTRYPOINT_TEST_SOURCE is unset so we fall through to the deploy logic below.
+[ "${ENTRYPOINT_TEST_SOURCE:-0}" = "1" ] && return 0
+
 # --- Main logic ---
 
 if [[ "$GITOPS_BRANCH" == "develop" ]]; then
-  log_header "Condition 1: Develop environment"
+  log_header "DEV path: ${APP_ID} -> ${RELEASE_VERSION}"
   clone_repo develop
-
-  log_step "Develop branch Kustomize step - DEV Overlay"
   apply_kustomize dev
 
-  log_step "Git commit and push directly to develop"
-  commit_and_push develop "Deploy ${APP_ID} to DEV - version ${RELEASE_VERSION} by ${GITHUB_ACTOR}"
+  # Primary deployment. Explicit check (not bare under set -e) so we emit a
+  # precise, UI-visible diagnostic. commit_and_push returns 0 also on "no
+  # changes" (rerun-safe).
+  if ! commit_and_push develop "Deploy ${APP_ID} to DEV - version ${RELEASE_VERSION} by ${GITHUB_ACTOR}"; then
+    echo "::error title=DEV deploy failed::${APP_ID}: develop manifest NOT updated after retries."
+    exit 1
+  fi
+  log_step "DEV manifest updated (or already current); ArgoCD will roll the image."
 
-  log_step "Merge develop into release branch"
-  git checkout release
-  git pull origin release
-  git merge develop -X theirs --no-edit
-  git_push_with_retry release
+  # Secondary mirror. DEV already shipped; classify the failure so on-call gets an
+  # accurate Checks-UI signal (annotation + job summary), not just a log line. Capture
+  # the rc with `|| rc=$?` (set -e safe): 0 ok, 2 structural conflict, else transient.
+  sync_rc=0
+  sync_develop_to_release || sync_rc=$?
+  if [ "$sync_rc" -eq 0 ]; then
+    log_step "develop -> release sync complete."
+    exit 0
+  fi
+  if [ "$sync_rc" -eq 2 ]; then
+    MSG="DEV deploy for ${APP_ID} SUCCEEDED (develop updated; ArgoCD rolling). The develop->release MERGE has a CONFLICT requiring MANUAL reconciliation — rerunning will NOT help. Fix the develop/release divergence (see finaya-kubernetes-manifests#624), then redeploy."
+    echo "::error title=Release branch merge conflict — DEV is LIVE, manual fix needed::${MSG}"
+    { echo "### ⛔ ${APP_ID}: DEV is live, but develop->release has a MERGE CONFLICT (manual fix — do NOT blind-rerun)"; echo "$MSG"; } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+  else
+    MSG="DEV deploy for ${APP_ID} SUCCEEDED (develop updated; ArgoCD rolling). develop->release sync failed (transient). Safe to rerun (idempotent)."
+    echo "::error title=Release-sync lagged — DEV is LIVE, safe to rerun::${MSG}"
+    { echo "### ⚠️ ${APP_ID}: DEV is live, release-sync lagged (transient — safe to rerun)"; echo "$MSG"; } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+  fi
+  exit 1
 
 elif [[ "$GITOPS_BRANCH" == "homolog" ]] || [[ "$GITOPS_BRANCH" == "release" ]]; then
   BRANCH_NAME="deploy/homolog/${APP_ID}"
