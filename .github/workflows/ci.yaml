@@ -1,0 +1,69 @@
+# CI workflow — lints shell scripts and workflow files on every PR.
+#
+# WHY THIS SHAPE:
+#   • shellcheck catches real bugs in entrypoint.sh and tests before they hit
+#     container runtime (the only execution environment we previously had).
+#   • actionlint enforces correct GitHub Actions YAML syntax and expression
+#     usage, complementing shell-level checks.
+#   • All third-party actions are pinned by immutable commit SHA, not a mutable
+#     tag. Tags can be force-pushed; a SHA cannot. This is a hard repo norm
+#     (mirrors the pattern in buildersbank/build-deploy workflows).
+#     See: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-third-party-actions
+#
+# SHELLCHECK EXCLUSIONS (SC2164):
+#   • SC2164: "Use 'cd ... || exit'". Excluded because the only SC2164 hits in
+#     this repo are inside *test* subshells (test_push_retry.sh line 44) and
+#     inside clone_repo/apply_kustomize where the cd targets are always created
+#     in the same function. These are pre-existing patterns, not introduced by
+#     this change. Excluding only SC2164 (vs. lowering severity globally to
+#     `error`) preserves detection of all other warning-class findings in future
+#     PRs.  Audited: entrypoint.sh + test/ — zero warning/error hits with this
+#     one exclusion.
+
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - master
+      - develop
+
+# Least-privilege: workflows that only read repo content need no other token
+# scope. Explicit declaration prevents accidental escalation if a future step
+# is added that assumes the default write scope.
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (shellcheck + actionlint)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      # ludeeus/action-shellcheck scans every *.sh in the repo by default,
+      # which covers entrypoint.sh and test/test_push_retry.sh in one pass.
+      # severity: warning → info-level findings (SC2015 A&&B||C idiom used
+      # deliberately in the test harness) are suppressed without affecting
+      # detection of real warnings and errors in future code.
+      - name: ShellCheck (all *.sh)
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38  # 2.0.0
+        env:
+          # SC2164: pre-existing 'cd' without '|| exit' in test subshells and
+          # in clone_repo/apply_kustomize (always-present dirs). Documented above.
+          SHELLCHECK_OPTS: -e SC2164
+        with:
+          severity: warning
+
+      # actionlint validates GitHub Actions workflow YAML: expression syntax,
+      # action input names, runner labels, etc. Catches mistakes shellcheck
+      # cannot see (e.g., wrong ${{ }} expressions, misused event triggers).
+      - name: actionlint
+        uses: reviewdog/action-actionlint@6fb7acc99f4a1008869fa8a0f09cfca740837d9d  # v1.72.0
+        with:
+          # 'local' reporter: print findings and fail the job, with NO checks/PR
+          # write scope. The default 'github-pr-check' reporter needs checks:write,
+          # which this least-privilege 'contents: read' workflow deliberately omits.
+          reporter: local
+          fail_on_error: "true"
