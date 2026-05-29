@@ -157,7 +157,8 @@ delete_remote_branch_if_exists() {
 }
 
 # Mirror develop -> release (a convenience mirror for the next homolog promotion;
-# ArgoCD watches develop, NOT release). Returns 0/1. Called inside `if`, so set -e
+# ArgoCD watches develop, NOT release). Returns 0 (ok) / 1 (transient: fetch/checkout/push) /
+# 2 (structural merge conflict — manual fix). Called in an `if`/`||` context, so set -e
 # is suspended in its body — every step is guarded explicitly.
 # `release` is a tracking checkout (no unique local commits), so REBUILD it from
 # origin each time (fetch + checkout -B) instead of rebasing -> branch-tip
@@ -169,11 +170,14 @@ sync_develop_to_release() {
   git fetch origin release                 || { log_warn "fetch release failed";   return 1; }
   git checkout -B release origin/release   || { log_warn "checkout release failed"; return 1; }
   if ! git merge develop -X theirs --no-edit; then
-    log_warn "merge develop->release failed; aborting."
+    # Return 2 = STRUCTURAL conflict (e.g. modify/delete, which -X theirs cannot
+    # auto-resolve). NOT a transient race — rerunning will not help; a human must
+    # reconcile develop vs release. See build-deploy#53 / finaya-kubernetes-manifests#624.
+    log_warn "merge develop->release CONFLICT — manual reconciliation needed (not a transient race)."
     git merge --abort 2>/dev/null || true
-    return 1
+    return 2
   fi
-  git_push_with_retry release
+  git_push_with_retry release   # 0 on success; 1 = transient (push race exhausted)
 }
 
 # Unit tests source this file to exercise the functions above WITHOUT running the
@@ -197,16 +201,24 @@ if [[ "$GITOPS_BRANCH" == "develop" ]]; then
   fi
   log_step "DEV manifest updated (or already current); ArgoCD will roll the image."
 
-  # Secondary mirror. Fatal only on PERSISTENT failure — surfaced as a GitHub
-  # annotation + job summary (not just a log line) so on-call can instantly tell
-  # "DEV is live, release lagged, safe to rerun" from a real failure.
-  if sync_develop_to_release; then
+  # Secondary mirror. DEV already shipped; classify the failure so on-call gets an
+  # accurate Checks-UI signal (annotation + job summary), not just a log line. Capture
+  # the rc with `|| rc=$?` (set -e safe): 0 ok, 2 structural conflict, else transient.
+  sync_rc=0
+  sync_develop_to_release || sync_rc=$?
+  if [ "$sync_rc" -eq 0 ]; then
     log_step "develop -> release sync complete."
     exit 0
   fi
-  MSG="DEV deploy for ${APP_ID} SUCCEEDED (develop updated; ArgoCD rolling). develop->release sync failed after retries. Safe to rerun (idempotent)."
-  echo "::error title=Release-sync lagged (DEV is LIVE)::${MSG}"
-  { echo "### ⚠️ ${APP_ID}: DEV is live, release-sync lagged"; echo "$MSG"; } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+  if [ "$sync_rc" -eq 2 ]; then
+    MSG="DEV deploy for ${APP_ID} SUCCEEDED (develop updated; ArgoCD rolling). The develop->release MERGE has a CONFLICT requiring MANUAL reconciliation — rerunning will NOT help. Fix the develop/release divergence (see finaya-kubernetes-manifests#624), then redeploy."
+    echo "::error title=Release branch merge conflict — DEV is LIVE, manual fix needed::${MSG}"
+    { echo "### ⛔ ${APP_ID}: DEV is live, but develop->release has a MERGE CONFLICT (manual fix — do NOT blind-rerun)"; echo "$MSG"; } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+  else
+    MSG="DEV deploy for ${APP_ID} SUCCEEDED (develop updated; ArgoCD rolling). develop->release sync failed (transient). Safe to rerun (idempotent)."
+    echo "::error title=Release-sync lagged — DEV is LIVE, safe to rerun::${MSG}"
+    { echo "### ⚠️ ${APP_ID}: DEV is live, release-sync lagged (transient — safe to rerun)"; echo "$MSG"; } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+  fi
   exit 1
 
 elif [[ "$GITOPS_BRANCH" == "homolog" ]] || [[ "$GITOPS_BRANCH" == "release" ]]; then

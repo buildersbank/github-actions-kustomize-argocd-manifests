@@ -61,5 +61,18 @@ cd "$_prev" || exit 1
 echo "  [sentinel] reached line after git_push_with_retry (proves return, not exit)"
 [ "$t5_rc" -eq 1 ] && pass "T5 returned 1 (caller survived)" || fail "T5 expected rc 1 got $t5_rc"
 
+echo "=== TEST 6: sync_develop_to_release -> 2 on modify/delete conflict (the #623 signature) ==="
+B="$TMP/r6.git"; git init --bare -b develop "$B" >/dev/null 2>&1
+S="$TMP/r6seed"; git clone "$B" "$S" >/dev/null 2>&1
+( cd "$S" && git config user.email t@t && git config user.name t \
+  && echo v1 > foo.yaml && git add . && git commit -m base >/dev/null 2>&1 && git push origin develop >/dev/null 2>&1 \
+  && git checkout -b release >/dev/null 2>&1 && git rm foo.yaml >/dev/null 2>&1 && git commit -m "release: drop foo" >/dev/null 2>&1 && git push origin release >/dev/null 2>&1 \
+  && git checkout develop >/dev/null 2>&1 && echo v2 > foo.yaml && git add . && git commit -m "develop: modify foo" >/dev/null 2>&1 && git push origin develop >/dev/null 2>&1 )
+W="$TMP/r6work"; git clone "$B" "$W" >/dev/null 2>&1
+( cd "$W" && git config user.email t@t && git config user.name t )
+s6_rc=0
+( cd "$W"; sync_develop_to_release >/dev/null 2>&1 ) || s6_rc=$?
+[ "$s6_rc" -eq 2 ] && pass "T6 returns 2 (structural conflict classified, not 'safe to rerun')" || fail "T6 expected rc 2 got $s6_rc"
+
 echo ""
 echo "ALL TESTS PASSED"
