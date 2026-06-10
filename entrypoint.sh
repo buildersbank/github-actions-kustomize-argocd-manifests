@@ -77,79 +77,78 @@ This PR updates only the ${APP_ID} microservice in the ${env_name,,} environment
 
 # Creates a verified commit via GitHub API (commits via API are automatically verified by GitHub Apps).
 # Must be called from REPO_ROOT after `git add` has staged the desired changes.
+# Creates a commit using the GraphQL createCommitOnBranch mutation.
+# This is the only way to produce commits with verified signatures via GitHub App tokens.
+# The REST API /git/commits does NOT produce verified commits.
 commit_via_api() {
   local branch="$1"
   local message="$2"
 
-  # Parent is the current local HEAD (works for both existing and new branches)
   local parent_sha
   parent_sha=$(git rev-parse HEAD)
-
-  # Get the tree SHA of the parent commit
-  local base_tree_sha
-  base_tree_sha=$(gh api "repos/${REPO_OWNER}/${REPO_NAME}/git/commits/${parent_sha}" --jq '.tree.sha')
 
   # Collect staged files
   local changed_files deleted_files
   changed_files=$(git diff --cached --name-only)
   deleted_files=$(git diff --cached --name-only --diff-filter=D)
 
-  # Build tree entries array
-  local tree_entries="[]"
+  # Build additions array (modified/new files with base64 content)
+  local additions="[]"
   while IFS= read -r file; do
     [ -z "$file" ] && continue
-    if echo "$deleted_files" | grep -qx "$file"; then
-      # Deletion: set sha to null
-      tree_entries=$(echo "$tree_entries" | jq ". + [{\"path\": \"$file\", \"mode\": \"100644\", \"type\": \"blob\", \"sha\": null}]")
-    else
-      local blob_sha
-      blob_sha=$(gh api "repos/${REPO_OWNER}/${REPO_NAME}/git/blobs" \
-        -f content="$(base64 -w 0 "$file")" \
-        -f encoding="base64" \
-        --jq '.sha')
-      tree_entries=$(echo "$tree_entries" | jq ". + [{\"path\": \"$file\", \"mode\": \"100644\", \"type\": \"blob\", \"sha\": \"$blob_sha\"}]")
+    if ! echo "$deleted_files" | grep -qx "$file"; then
+      additions=$(echo "$additions" | jq \
+        --arg path "$file" \
+        --arg contents "$(base64 -w 0 "$file")" \
+        '. + [{"path": $path, "contents": $contents}]')
     fi
   done <<< "$changed_files"
 
-  # Create new tree on top of the parent tree
-  local new_tree_sha
-  new_tree_sha=$(jq -n \
-    --arg base "$base_tree_sha" \
-    --argjson tree "$tree_entries" \
-    '{"base_tree": $base, "tree": $tree}' \
-    | gh api "repos/${REPO_OWNER}/${REPO_NAME}/git/trees" --input - --jq '.sha')
+  # Build deletions array
+  local deletions="[]"
+  while IFS= read -r file; do
+    [ -z "$file" ] && continue
+    deletions=$(echo "$deletions" | jq --arg path "$file" '. + [{"path": $path}]')
+  done <<< "$deleted_files"
 
-  # Create the commit (GitHub App token = automatically verified signature)
-  local commit_date new_commit_sha
-  commit_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  new_commit_sha=$(jq -n \
-    --arg msg "$message" \
-    --arg tree "$new_tree_sha" \
-    --arg parent "$parent_sha" \
-    --arg date "$commit_date" \
-    '{
-      "message": $msg,
-      "tree": $tree,
-      "parents": [$parent],
-      "author":    {"name": "GitHub Action", "email": "action@finaya.tech", "date": $date},
-      "committer": {"name": "GitHub Action", "email": "action@finaya.tech", "date": $date}
-    }' \
-    | gh api "repos/${REPO_OWNER}/${REPO_NAME}/git/commits" --input - --jq '.sha')
-
-  log_step "Verified commit created: ${new_commit_sha}"
-
-  # Create or update the remote ref
-  if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-    gh api "repos/${REPO_OWNER}/${REPO_NAME}/git/refs/heads/${branch}" \
-      -X PATCH \
-      -f sha="$new_commit_sha" \
-      -F force=false
-  else
+  # Ensure the remote branch exists before committing to it
+  if ! git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
     gh api "repos/${REPO_OWNER}/${REPO_NAME}/git/refs" \
       -f ref="refs/heads/${branch}" \
-      -f sha="$new_commit_sha"
+      -f sha="$parent_sha"
+    log_step "Remote branch ${branch} created"
   fi
 
+  # Get the actual remote HEAD (expectedHeadOid must match the remote tip exactly)
+  local expected_head
+  expected_head=$(gh api "repos/${REPO_OWNER}/${REPO_NAME}/git/ref/heads/${branch}" --jq '.object.sha')
+
+  # createCommitOnBranch is the only GraphQL mutation that produces verified commits
+  local gql_query='mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }'
+
+  local new_commit_sha
+  new_commit_sha=$(jq -n \
+    --arg query  "$gql_query" \
+    --arg repo   "${REPO_OWNER}/${REPO_NAME}" \
+    --arg branch "$branch" \
+    --arg head   "$expected_head" \
+    --arg msg    "$message" \
+    --argjson additions "$additions" \
+    --argjson deletions "$deletions" \
+    '{
+      "query": $query,
+      "variables": {
+        "input": {
+          "branch":          {"repositoryNameWithOwner": $repo, "branchName": $branch},
+          "message":         {"headline": $msg},
+          "fileChanges":     {"additions": $additions, "deletions": $deletions},
+          "expectedHeadOid": $head
+        }
+      }
+    }' \
+    | gh api graphql --input - --jq '.data.createCommitOnBranch.commit.oid')
+
+  log_step "Verified commit created: ${new_commit_sha}"
   log_step "Branch ${branch} updated on remote"
 }
 
