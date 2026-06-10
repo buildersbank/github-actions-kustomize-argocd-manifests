@@ -120,12 +120,20 @@ commit_via_api() {
     | gh api "repos/${REPO_OWNER}/${REPO_NAME}/git/trees" --input - --jq '.sha')
 
   # Create the commit (GitHub App token = automatically verified signature)
-  local new_commit_sha
+  local commit_date new_commit_sha
+  commit_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   new_commit_sha=$(jq -n \
     --arg msg "$message" \
     --arg tree "$new_tree_sha" \
     --arg parent "$parent_sha" \
-    '{"message": $msg, "tree": $tree, "parents": [$parent]}' \
+    --arg date "$commit_date" \
+    '{
+      "message": $msg,
+      "tree": $tree,
+      "parents": [$parent],
+      "author":    {"name": "GitHub Action", "email": "action@finaya.tech", "date": $date},
+      "committer": {"name": "GitHub Action", "email": "action@finaya.tech", "date": $date}
+    }' \
     | gh api "repos/${REPO_OWNER}/${REPO_NAME}/git/commits" --input - --jq '.sha')
 
   log_step "Verified commit created: ${new_commit_sha}"
