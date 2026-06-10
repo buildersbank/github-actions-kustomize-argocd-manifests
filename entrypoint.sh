@@ -13,6 +13,7 @@ REPO_OWNER=$(echo "$GITOPS_REPO_URL" | cut -d'/' -f2)
 REPO_NAME=$(echo "$GITOPS_REPO_URL" | cut -d'/' -f3 | sed 's/\.git$//')
 
 export GITHUB_TOKEN="${GH_ACCESS_TOKEN}"
+export GH_TOKEN="${GH_ACCESS_TOKEN}"
 
 # --- Logging helpers ---
 log_header() { printf "\033[0;36m=> %s\033[0m\n" "$1"; }
