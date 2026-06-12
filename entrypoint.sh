@@ -193,16 +193,16 @@ if [[ "$GITOPS_BRANCH" == "develop" ]]; then
   commit_and_push develop "Deploy ${APP_ID} to DEV - version ${RELEASE_VERSION} by ${GITHUB_ACTOR}"
 
   log_step "Merge develop into release branch via API"
-  merge_http_code=$(gh api "repos/${REPO_OWNER}/${REPO_NAME}/merges" \
+  # gh api exits 0 for 201 (merged) and 204 (already up to date), non-zero for 409 (conflict)
+  if ! gh api "repos/${REPO_OWNER}/${REPO_NAME}/merges" \
+    --silent \
     -f base="release" \
     -f head="develop" \
-    -f commit_message="Merge develop into release after deploying ${APP_ID} ${RELEASE_VERSION}" \
-    -w "%{http_code}" -o /dev/null 2>&1 || true)
-  if [[ "$merge_http_code" == "409" ]]; then
+    -f commit_message="Merge develop into release after deploying ${APP_ID} ${RELEASE_VERSION}"; then
     log_error "Merge conflict between develop and release - manual resolution required"
     exit 1
   fi
-  log_step "develop merged into release (HTTP ${merge_http_code})"
+  log_step "develop merged into release"
 
 elif [[ "$GITOPS_BRANCH" == "homolog" ]] || [[ "$GITOPS_BRANCH" == "release" ]]; then
   BRANCH_NAME="deploy/homolog/${APP_ID}"
