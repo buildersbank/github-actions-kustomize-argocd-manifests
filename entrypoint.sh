@@ -152,7 +152,12 @@ commit_via_api() {
       return 0
     fi
 
-    if [ "$attempt" -ge "${GITOPS_PUSH_MAX_ATTEMPTS:-8}" ]; then
+    local max_attempts="${GITOPS_PUSH_MAX_ATTEMPTS:-8}"
+    if ! [[ "$max_attempts" =~ ^[0-9]+$ ]] || [ "$max_attempts" -lt 1 ]; then
+      log_warn "GITOPS_PUSH_MAX_ATTEMPTS='${GITOPS_PUSH_MAX_ATTEMPTS}' is not a positive integer, defaulting to 8"
+      max_attempts=8
+    fi
+    if [ "$attempt" -ge "$max_attempts" ]; then
       log_error "Failed to push to ${branch} after ${attempt} attempts"
       return 1
     fi
