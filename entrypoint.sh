@@ -120,37 +120,50 @@ commit_via_api() {
     log_step "Remote branch ${branch} created"
   fi
 
-  # Get the actual remote HEAD (expectedHeadOid must match the remote tip exactly)
-  local expected_head
-  expected_head=$(gh api "repos/${REPO_OWNER}/${REPO_NAME}/git/ref/heads/${branch}" --jq '.object.sha')
-
-  # createCommitOnBranch is the only GraphQL mutation that produces verified commits
   local gql_query='mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }'
 
-  local new_commit_sha
-  new_commit_sha=$(jq -n \
-    --arg query  "$gql_query" \
-    --arg repo   "${REPO_OWNER}/${REPO_NAME}" \
-    --arg branch "$branch" \
-    --arg head   "$expected_head" \
-    --arg msg    "$message" \
-    --argjson additions "$additions" \
-    --argjson deletions "$deletions" \
-    '{
-      "query": $query,
-      "variables": {
-        "input": {
-          "branch":          {"repositoryNameWithOwner": $repo, "branchName": $branch},
-          "message":         {"headline": $msg},
-          "fileChanges":     {"additions": $additions, "deletions": $deletions},
-          "expectedHeadOid": $head
-        }
-      }
-    }' \
-    | gh api graphql --input - --jq '.data.createCommitOnBranch.commit.oid')
+  # Re-read the tip on each attempt: a sibling deploy job can advance the branch
+  # between the read and this optimistic-locked commit and reject the mutation.
+  local attempt=1 expected_head new_commit_sha
+  while : ; do
+    expected_head=$(gh api "repos/${REPO_OWNER}/${REPO_NAME}/git/ref/heads/${branch}" --jq '.object.sha') || expected_head=""
+    if [ -n "$expected_head" ] && new_commit_sha=$(jq -n \
+        --arg query  "$gql_query" \
+        --arg repo   "${REPO_OWNER}/${REPO_NAME}" \
+        --arg branch "$branch" \
+        --arg head   "$expected_head" \
+        --arg msg    "$message" \
+        --argjson additions "$additions" \
+        --argjson deletions "$deletions" \
+        '{
+          "query": $query,
+          "variables": {
+            "input": {
+              "branch":          {"repositoryNameWithOwner": $repo, "branchName": $branch},
+              "message":         {"headline": $msg},
+              "fileChanges":     {"additions": $additions, "deletions": $deletions},
+              "expectedHeadOid": $head
+            }
+          }
+        }' \
+        | gh api graphql --input - --jq '.data.createCommitOnBranch.commit.oid'); then
+      log_step "Verified commit created: ${new_commit_sha}"
+      log_step "Branch ${branch} updated on remote"
+      return 0
+    fi
 
-  log_step "Verified commit created: ${new_commit_sha}"
-  log_step "Branch ${branch} updated on remote"
+    local max_attempts="${GITOPS_PUSH_MAX_ATTEMPTS:-8}"
+    if ! [[ "$max_attempts" =~ ^[0-9]+$ ]] || [ "$max_attempts" -lt 1 ]; then
+      log_warn "GITOPS_PUSH_MAX_ATTEMPTS='${GITOPS_PUSH_MAX_ATTEMPTS}' is not a positive integer, defaulting to 8"
+      max_attempts=8
+    fi
+    if [ "$attempt" -ge "$max_attempts" ]; then
+      log_error "Failed to push to ${branch} after ${attempt} attempts"
+      return 1
+    fi
+    sleep "$(( attempt < 6 ? attempt : 6 ))"
+    attempt=$(( attempt + 1 ))
+  done
 }
 
 commit_and_push() {
