@@ -1,0 +1,42 @@
+name: Check
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  sonar:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    name: SonarQube
+    runs-on: ubuntu-22.04
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+        with:
+          fetch-depth: 0
+      - name: Auth
+        id: auth
+        uses: buildersbank/ops-actions-templates/.github/actions/github-app-auth@c454e3b70a371258c36ea3ed626273f514324a44
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+      - name: SonarQube Scan
+        id: sonar
+        uses: sonarsource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602  # v6.0.0
+        with:
+          args: >
+            "-Dsonar.qualitygate.wait=false"
+        env:
+          GITHUB_TOKEN: ${{ steps.auth.outputs.token }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      - name: Notify on Sonar failure (non-blocking PR)
+        if: failure() && steps.sonar.outcome == 'failure'
+        run: echo "::warning::SonarQube scan failed (non-blocking on PR). See job logs for details."
