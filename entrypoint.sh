@@ -186,7 +186,9 @@ commit_and_push() {
 current_overlay_tag() {
   local overlay_dir="k8s/${APP_ID}/overlays/$1"
   local app_file
-  if app_file=$(grep -rl "kind: FinayaApplication" "$overlay_dir" 2>/dev/null) && [ -n "$app_file" ]; then
+  # head -1: o overlay pode ter mais de um arquivo com o kind, e yq com dois caminhos
+  # devolveria dois valores para uma variavel que espera um
+  if app_file=$(grep -rl "kind: FinayaApplication" "$overlay_dir" 2>/dev/null | head -n1) && [ -n "$app_file" ]; then
     yq -r '.spec.image.tag // ""' "$app_file"
   elif [ -f "${overlay_dir}/kustomization.yaml" ]; then
     yq -r '(.images[] | select(.name == "IMAGE") | .newTag) // ""' "${overlay_dir}/kustomization.yaml"
@@ -211,6 +213,13 @@ current_overlay_tag() {
 manifest_is_newer_than_release() {
   local current="$1"
   if [ -z "$current" ] || [ "$current" = "null" ] || [ "$current" = "$RELEASE_VERSION" ]; then
+    return 1
+  fi
+
+  # As duas entram numa URL de API. Sao sha ou tag, entao a forma esperada e a de uma
+  # referencia git; qualquer outra coisa nao e comparavel e o fluxo segue como antes.
+  if ! printf '%s' "$current$RELEASE_VERSION" | grep -qE '^[A-Za-z0-9._/-]+$'; then
+    log_warn "Tag fora do formato esperado (${current} / ${RELEASE_VERSION}) - writing the tag as usual"
     return 1
   fi
 

@@ -82,6 +82,16 @@ go through a pull request, where a human sees the version.
 |---|---|---|
 | `GITOPS_ALLOW_TAG_ROLLBACK` | `false` | `true` writes an older tag on purpose, which is what a rollback is |
 
+Para exercitar a guarda sem subir o action:
+
+```bash
+bash tests/tag-guard-test.sh entrypoint.sh
+```
+
+Ele injeta um `gh` de mentira e roda os casos sobre um `kustomization.yaml` de verdade. O
+caso que lê a tag precisa do `yq` no PATH — o mesmo binário que o `Dockerfile` instala; sem
+ele, esse caso é pulado e os demais rodam.
+
 ## Migration from previous version
 
 The action is **backward compatible**. Simply update your workflow to use the new version:
